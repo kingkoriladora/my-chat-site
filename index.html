@@ -5,9 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>コリチャット</title>
   <style>
-    * {
-      box-sizing: border-box;
-    }
+    * { box-sizing: border-box; }
 
     body {
       margin: 0;
@@ -22,7 +20,7 @@
 
     .card {
       width: 100%;
-      max-width: 760px;
+      max-width: 860px;
       background: white;
       border-radius: 20px;
       box-shadow: 0 10px 30px rgba(0,0,0,0.15);
@@ -34,10 +32,6 @@
       color: white;
       padding: 20px;
       text-align: center;
-    }
-
-    .header h1 {
-      margin: 0 0 8px;
     }
 
     .section {
@@ -114,8 +108,25 @@
       font-weight: bold;
     }
 
+    .topBar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 12px;
+      flex-wrap: wrap;
+    }
+
+    .statusBox {
+      background: #eff6ff;
+      border: 1px solid #bfdbfe;
+      border-radius: 12px;
+      padding: 10px 12px;
+      font-size: 14px;
+    }
+
     #chatBox {
-      height: 360px;
+      height: 380px;
       overflow-y: auto;
       background: #f8fafc;
       border: 1px solid #e2e8f0;
@@ -126,10 +137,34 @@
 
     .message {
       background: white;
-      border-radius: 12px;
-      padding: 10px 12px;
+      border-radius: 14px;
+      padding: 12px;
       margin-bottom: 10px;
       box-shadow: 0 2px 6px rgba(0,0,0,0.08);
+    }
+
+    .messageRow {
+      display: flex;
+      gap: 10px;
+      align-items: flex-start;
+    }
+
+    .avatar {
+      width: 42px;
+      height: 42px;
+      border-radius: 999px;
+      background: #dbeafe;
+      color: #1e3a8a;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: bold;
+      flex-shrink: 0;
+    }
+
+    .bubble {
+      flex: 1;
+      min-width: 0;
     }
 
     .meta {
@@ -158,38 +193,51 @@
       width: 120px;
       margin-top: 0;
     }
+
+    #reportedBox .message {
+      border-left: 4px solid #dc2626;
+    }
   </style>
 </head>
 <body>
   <div class="card">
     <div class="header">
       <h1>コリチャット</h1>
-      <p>名前と入室コードで入るチャット</p>
+      <p>固定ルームの安全めチャット</p>
     </div>
 
     <div id="loginSection" class="section">
       <label for="nameInput">名前</label>
       <input id="nameInput" type="text" maxlength="20" placeholder="名前を入れてね" />
 
-      <label for="roomInput">入室コード</label>
-      <input id="roomInput" type="password" maxlength="30" placeholder="入室コードを入れてね" />
-
-      <button id="loginBtn">入る</button>
+      <button id="loginBtn">チャットに入る</button>
       <div id="loginError" class="error"></div>
 
       <div class="ruleBox">
         <b>ルール</b><br>
         悪口、脅し、個人情報、なりすましは禁止。<br>
-        いやなメッセージは通報して、管理者が確認して削除します。
+        いやなメッセージは通報して、管理者が確認します。
       </div>
 
       <div class="small">
-        この入室コード方式は、完全なセキュリティではありません。<br>
+        ルームは固定です。<br>
         本名、学校名、住所、電話番号は書かないでね。
+      </div>
+
+      <div class="ruleBox" style="margin-top:20px;">
+        <b>管理者</b><br>
+        <input id="adminEmail" type="email" placeholder="管理者メール" />
+        <input id="adminPassword" type="password" placeholder="管理者パスワード" />
+        <button id="adminLoginBtn">管理者ログイン</button>
       </div>
     </div>
 
     <div id="chatSection" class="section hidden">
+      <div class="topBar">
+        <div class="statusBox"><b>ルーム:</b> コリチャット</div>
+        <div class="statusBox" id="onlineCount">入室中: 1人</div>
+      </div>
+
       <div id="chatBox"></div>
 
       <div class="row">
@@ -200,38 +248,47 @@
       <button id="logoutBtn" class="gray" style="margin-top:12px;">出る</button>
       <div id="chatError" class="error"></div>
     </div>
+
+    <div id="adminSection" class="section hidden">
+      <div class="topBar">
+        <div class="statusBox"><b>管理者モード</b></div>
+      </div>
+      <h2>通報一覧</h2>
+      <div id="reportedBox"></div>
+      <button id="adminLogoutBtn" class="gray" style="margin-top:12px;">管理者ログアウト</button>
+    </div>
   </div>
 
   <script type="module">
     import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-    const supabaseUrl = "https://bglmwolbvaxpsxwpiqgv.supabase.co";
-    const supabaseKey = "sb_publishable_ocAIY6Nqkurq0BJxuhvK6w_YVxkC14P";
+    const supabaseUrl = "YOUR_SUPABASE_URL";
+    const supabaseKey = "YOUR_SUPABASE_PUBLISHABLE_KEY";
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    const badWords = [
-      "死ね",
-      "きもい",
-      "殺す",
-      "ばか",
-      "アホ",
-      "消えろ"
-    ];
+    const FIXED_ROOM = "kori-room";
+    const badWords = ["死ね", "きもい", "殺す", "ばか", "アホ", "消えろ"];
 
     let currentName = "";
-    let currentRoom = "";
-    let channel = null;
+    let currentRoom = FIXED_ROOM;
+    let messageChannel = null;
+    let presenceChannel = null;
 
     const loginSection = document.getElementById("loginSection");
     const chatSection = document.getElementById("chatSection");
+    const adminSection = document.getElementById("adminSection");
     const loginError = document.getElementById("loginError");
     const chatError = document.getElementById("chatError");
     const chatBox = document.getElementById("chatBox");
     const msgInput = document.getElementById("msgInput");
+    const onlineCount = document.getElementById("onlineCount");
+    const reportedBox = document.getElementById("reportedBox");
 
     document.getElementById("loginBtn").addEventListener("click", login);
     document.getElementById("sendBtn").addEventListener("click", sendMessage);
     document.getElementById("logoutBtn").addEventListener("click", logout);
+    document.getElementById("adminLoginBtn").addEventListener("click", adminLogin);
+    document.getElementById("adminLogoutBtn").addEventListener("click", adminLogout);
 
     msgInput.addEventListener("keydown", (e) => {
       if (e.key === "Enter") {
@@ -244,26 +301,22 @@
       chatError.textContent = "";
 
       const name = document.getElementById("nameInput").value.trim();
-      const room = document.getElementById("roomInput").value.trim();
 
       if (!name) {
         loginError.textContent = "名前を入れてね";
         return;
       }
 
-      if (!room) {
-        loginError.textContent = "入室コードを入れてね";
-        return;
-      }
-
       currentName = name;
-      currentRoom = room;
+      currentRoom = FIXED_ROOM;
 
       loginSection.classList.add("hidden");
+      adminSection.classList.add("hidden");
       chatSection.classList.remove("hidden");
 
       await loadMessages();
-      startRealtime();
+      startMessageRealtime();
+      await startPresence();
     }
 
     function containsBadWord(text) {
@@ -319,13 +372,13 @@
       scrollBottom();
     }
 
-    function startRealtime() {
-      if (channel) {
-        supabase.removeChannel(channel);
+    function startMessageRealtime() {
+      if (messageChannel) {
+        supabase.removeChannel(messageChannel);
       }
 
-      channel = supabase
-        .channel("room-" + currentRoom)
+      messageChannel = supabase
+        .channel("messages-room-" + currentRoom)
         .on(
           "postgres_changes",
           {
@@ -344,16 +397,54 @@
         .subscribe();
     }
 
+    async function startPresence() {
+      if (presenceChannel) {
+        await supabase.removeChannel(presenceChannel);
+      }
+
+      presenceChannel = supabase.channel("presence-room-" + currentRoom, {
+        config: {
+          presence: {
+            key: currentName + "-" + crypto.randomUUID()
+          }
+        }
+      });
+
+      presenceChannel
+        .on("presence", { event: "sync" }, () => {
+          const state = presenceChannel.presenceState();
+          let count = 0;
+
+          Object.values(state).forEach((entries) => {
+            count += entries.length;
+          });
+
+          onlineCount.textContent = `入室中: ${count}人`;
+        })
+        .subscribe(async (status) => {
+          if (status === "SUBSCRIBED") {
+            await presenceChannel.track({
+              name: currentName,
+              room: currentRoom,
+              online_at: new Date().toISOString()
+            });
+          }
+        });
+    }
+
     function addMessage(msg) {
       const wrap = document.createElement("div");
       wrap.className = "message";
 
-      const time = new Date(msg.created_at).toLocaleString("ja-JP");
-
       wrap.innerHTML = `
-        <div class="meta">${escapeHtml(msg.name)} ・ ${escapeHtml(time)}</div>
-        <div class="text">${escapeHtml(msg.text)}</div>
-        <button class="danger" style="margin-top:8px;">通報</button>
+        <div class="messageRow">
+          <div class="avatar">${escapeHtml(getAvatarText(msg.name))}</div>
+          <div class="bubble">
+            <div class="meta">${escapeHtml(msg.name)} ・ ${escapeHtml(formatTime(msg.created_at))}</div>
+            <div class="text">${escapeHtml(msg.text)}</div>
+            <button class="danger" style="margin-top:8px; max-width:120px;">通報</button>
+          </div>
+        </div>
       `;
 
       const reportBtn = wrap.querySelector("button");
@@ -376,9 +467,131 @@
       chatBox.appendChild(wrap);
     }
 
-    function logout() {
+    async function adminLogin() {
+      const email = document.getElementById("adminEmail").value.trim();
+      const password = document.getElementById("adminPassword").value.trim();
+
+      if (!email || !password) {
+        alert("管理者メールとパスワードを入れてね");
+        return;
+      }
+
+      const { error } = await supabase.auth.signInWithPassword({
+        email,
+        password
+      });
+
+      if (error) {
+        alert("管理者ログイン失敗");
+        console.error(error);
+        return;
+      }
+
+      const { data: userData } = await supabase.auth.getUser();
+      const user = userData.user;
+
+      const { data: profile, error: profileError } = await supabase
+        .from("profiles")
+        .select("is_admin")
+        .eq("id", user.id)
+        .single();
+
+      if (profileError || !profile?.is_admin) {
+        alert("管理者ではありません");
+        await supabase.auth.signOut();
+        return;
+      }
+
+      loginSection.classList.add("hidden");
+      chatSection.classList.add("hidden");
+      adminSection.classList.remove("hidden");
+
+      await loadReportedMessages();
+    }
+
+    async function loadReportedMessages() {
+      reportedBox.innerHTML = "";
+
+      const { data, error } = await supabase
+        .from("messages")
+        .select("*")
+        .eq("reported", true)
+        .order("created_at", { ascending: false });
+
+      if (error) {
+        reportedBox.innerHTML = "<p>通報一覧の読み込みに失敗しました</p>";
+        console.error(error);
+        return;
+      }
+
+      if (!data.length) {
+        reportedBox.innerHTML = "<p>通報されたメッセージはまだありません</p>";
+        return;
+      }
+
+      data.forEach((msg) => {
+        const div = document.createElement("div");
+        div.className = "message";
+
+        div.innerHTML = `
+          <div class="messageRow">
+            <div class="avatar">${escapeHtml(getAvatarText(msg.name))}</div>
+            <div class="bubble">
+              <div class="meta">${escapeHtml(msg.name)} ・ ${escapeHtml(formatTime(msg.created_at))} ・ room: ${escapeHtml(msg.room_code)}</div>
+              <div class="text">${escapeHtml(msg.text)}</div>
+              <div class="row" style="margin-top:8px;">
+                <button class="danger">削除</button>
+                <button class="gray">通報解除</button>
+              </div>
+            </div>
+          </div>
+        `;
+
+        const deleteBtn = div.querySelector(".danger");
+        const unreportBtn = div.querySelector(".gray");
+
+        deleteBtn.addEventListener("click", async () => {
+          const { error } = await supabase
+            .from("messages")
+            .delete()
+            .eq("id", msg.id);
+
+          if (error) {
+            alert("削除できませんでした");
+            console.error(error);
+            return;
+          }
+
+          div.remove();
+        });
+
+        unreportBtn.addEventListener("click", async () => {
+          const { error } = await supabase
+            .from("messages")
+            .update({ reported: false })
+            .eq("id", msg.id);
+
+          if (error) {
+            alert("通報解除できませんでした");
+            console.error(error);
+            return;
+          }
+
+          div.remove();
+        });
+
+        reportedBox.appendChild(div);
+      });
+    }
+
+    async function adminLogout() {
+      await supabase.auth.signOut();
+      adminSection.classList.add("hidden");
+      loginSection.classList.remove("hidden");
+    }
+
+    async function logout() {
       currentName = "";
-      currentRoom = "";
       chatBox.innerHTML = "";
       msgInput.value = "";
       chatError.textContent = "";
@@ -386,10 +599,38 @@
       chatSection.classList.add("hidden");
       loginSection.classList.remove("hidden");
 
-      if (channel) {
-        supabase.removeChannel(channel);
-        channel = null;
+      if (messageChannel) {
+        await supabase.removeChannel(messageChannel);
+        messageChannel = null;
       }
+
+      if (presenceChannel) {
+        await supabase.removeChannel(presenceChannel);
+        presenceChannel = null;
+      }
+
+      onlineCount.textContent = "入室中: 1人";
+    }
+
+    function getAvatarText(name) {
+      const first = String(name).trim().charAt(0);
+      return first || "?";
+    }
+
+    function formatTime(dateString) {
+      const d = new Date(dateString);
+      const now = new Date();
+      const sameDay = d.toDateString() === now.toDateString();
+      const time = d.toLocaleTimeString("ja-JP", {
+        hour: "2-digit",
+        minute: "2-digit"
+      });
+
+      if (sameDay) {
+        return `今日 ${time}`;
+      }
+
+      return `${d.getMonth() + 1}/${d.getDate()} ${time}`;
     }
 
     function escapeHtml(str) {
@@ -407,3 +648,66 @@
   </script>
 </body>
 </html>
+
+あと、管理者モード使うならSQLも必要やで。
+これを Supabase の SQL Editor に貼って Run。
+
+create table if not exists public.profiles (
+  id uuid primary key references auth.users(id) on delete cascade,
+  is_admin boolean not null default false
+);
+
+alter table public.profiles enable row level security;
+
+create policy "users can read own profile"
+on public.profiles
+for select
+to authenticated
+using (auth.uid() = id);
+
+create policy "admin can read all messages"
+on public.messages
+for select
+to authenticated
+using (
+  exists (
+    select 1
+    from public.profiles
+    where profiles.id = auth.uid()
+      and profiles.is_admin = true
+  )
+);
+
+create policy "admin can delete messages"
+on public.messages
+for delete
+to authenticated
+using (
+  exists (
+    select 1
+    from public.profiles
+    where profiles.id = auth.uid()
+      and profiles.is_admin = true
+  )
+);
+
+create policy "admin can update messages"
+on public.messages
+for update
+to authenticated
+using (
+  exists (
+    select 1
+    from public.profiles
+    where profiles.id = auth.uid()
+      and profiles.is_admin = true
+  )
+)
+with check (
+  exists (
+    select 1
+    from public.profiles
+    where profiles.id = auth.uid()
+      and profiles.is_admin = true
+  )
+);
