@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ひみつチャット</title>
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      background: linear-gradient(135deg, #dbeafe, #f5d0fe);
+      min-height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      padding: 20px;
+    }
+
+    .card {
+      width: 100%;
+      max-width: 760px;
+      background: white;
+      border-radius: 20px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.15);
+      overflow: hidden;
+    }
+
+    .header {
+      background: #2563eb;
+      color: white;
+      padding: 20px;
+      text-align: center;
+    }
+
+    .header h1 {
+      margin: 0 0 8px;
+    }
+
+    .section {
+      padding: 20px;
+    }
+
+    label {
+      display: block;
+      margin-top: 12px;
+      font-weight: bold;
+    }
+
+    input, button {
+      width: 100%;
+      padding: 12px;
+      margin-top: 8px;
+      border-radius: 10px;
+      border: 1px solid #cbd5e1;
+      font-size: 16px;
+    }
+
+    button {
+      background: #2563eb;
+      color: white;
+      border: none;
+      cursor: pointer;
+      font-weight: bold;
+    }
+
+    button:hover {
+      background: #1d4ed8;
+    }
+
+    .gray {
+      background: #64748b;
+    }
+
+    .gray:hover {
+      background: #475569;
+    }
+
+    .danger {
+      background: #dc2626;
+    }
+
+    .danger:hover {
+      background: #b91c1c;
+    }
+
+    .hidden {
+      display: none;
+    }
+
+    .ruleBox {
+      background: #eff6ff;
+      border: 1px solid #bfdbfe;
+      border-radius: 12px;
+      padding: 12px;
+      margin-top: 16px;
+      font-size: 14px;
+      line-height: 1.6;
+    }
+
+    .small {
+      color: #475569;
+      font-size: 13px;
+      margin-top: 10px;
+      line-height: 1.5;
+    }
+
+    .error {
+      color: #dc2626;
+      margin-top: 10px;
+      font-weight: bold;
+    }
+
+    #chatBox {
+      height: 360px;
+      overflow-y: auto;
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 14px;
+      padding: 12px;
+      margin-bottom: 12px;
+    }
+
+    .message {
+      background: white;
+      border-radius: 12px;
+      padding: 10px 12px;
+      margin-bottom: 10px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.08);
+    }
+
+    .meta {
+      color: #64748b;
+      font-size: 12px;
+      margin-bottom: 6px;
+    }
+
+    .text {
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
+    .row {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+    }
+
+    .row input {
+      flex: 1;
+      margin-top: 0;
+    }
+
+    .row button {
+      width: 120px;
+      margin-top: 0;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="header">
+      <h1>ひみつチャット</h1>
+      <p>名前と入室コードで入るチャット</p>
+    </div>
+
+    <div id="loginSection" class="section">
+      <label for="nameInput">名前</label>
+      <input id="nameInput" type="text" maxlength="20" placeholder="名前を入れてね" />
+
+      <label for="roomInput">入室コード</label>
+      <input id="roomInput" type="password" maxlength="30" placeholder="入室コードを入れてね" />
+
+      <button id="loginBtn">入る</button>
+      <div id="loginError" class="error"></div>
+
+      <div class="ruleBox">
+        <b>ルール</b><br>
+        悪口、脅し、個人情報、なりすましは禁止。<br>
+        いやなメッセージは通報して、管理者が確認して削除します。
+      </div>
+
+      <div class="small">
+        この入室コード方式は、完全なセキュリティではありません。<br>
+        本名、学校名、住所、電話番号は書かないでね。
+      </div>
+    </div>
+
+    <div id="chatSection" class="section hidden">
+      <div id="chatBox"></div>
+
+      <div class="row">
+        <input id="msgInput" type="text" maxlength="200" placeholder="メッセージを入力" />
+        <button id="sendBtn">送信</button>
+      </div>
+
+      <button id="logoutBtn" class="gray" style="margin-top:12px;">出る</button>
+      <div id="chatError" class="error"></div>
+    </div>
+  </div>
+
+  <script type="module">
+    import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+
+    const supabaseUrl = "https://bglmwolbvaxpsxwpiqgv.supabase.co";
+    const supabaseKey = "sb_publishable_ocAIY6Nqkurq0BJxuhvK6w_YVxkC14P";
+    const supabase = createClient(supabaseUrl, supabaseKey);
+
+    const badWords = [
+      "死ね",
+      "きもい",
+      "殺す",
+      "ばか",
+      "アホ",
+      "消えろ"
+    ];
+
+    let currentName = "";
+    let currentRoom = "";
+    let channel = null;
+
+    const loginSection = document.getElementById("loginSection");
+    const chatSection = document.getElementById("chatSection");
+    const loginError = document.getElementById("loginError");
+    const chatError = document.getElementById("chatError");
+    const chatBox = document.getElementById("chatBox");
+    const msgInput = document.getElementById("msgInput");
+
+    document.getElementById("loginBtn").addEventListener("click", login);
+    document.getElementById("sendBtn").addEventListener("click", sendMessage);
+    document.getElementById("logoutBtn").addEventListener("click", logout);
+
+    msgInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        sendMessage();
+      }
+    });
+
+    async function login() {
+      loginError.textContent = "";
+      chatError.textContent = "";
+
+      const name = document.getElementById("nameInput").value.trim();
+      const room = document.getElementById("roomInput").value.trim();
+
+      if (!name) {
+        loginError.textContent = "名前を入れてね";
+        return;
+      }
+
+      if (!room) {
+        loginError.textContent = "入室コードを入れてね";
+        return;
+      }
+
+      currentName = name;
+      currentRoom = room;
+
+      loginSection.classList.add("hidden");
+      chatSection.classList.remove("hidden");
+
+      await loadMessages();
+      startRealtime();
+    }
+
+    function containsBadWord(text) {
+      return badWords.some((word) => text.includes(word));
+    }
+
+    async function sendMessage() {
+      chatError.textContent = "";
+      const text = msgInput.value.trim();
+
+      if (!text) return;
+
+      if (containsBadWord(text)) {
+        chatError.textContent = "その言葉は送れません";
+        return;
+      }
+
+      const { error } = await supabase
+        .from("messages")
+        .insert({
+          name: currentName,
+          text: text,
+          room_code: currentRoom
+        });
+
+      if (error) {
+        chatError.textContent = "送信できませんでした";
+        console.error(error);
+        return;
+      }
+
+      msgInput.value = "";
+    }
+
+    async function loadMessages() {
+      chatBox.innerHTML = "";
+
+      const { data, error } = await supabase
+        .from("messages")
+        .select("*")
+        .eq("room_code", currentRoom)
+        .eq("reported", false)
+        .order("created_at", { ascending: true })
+        .limit(100);
+
+      if (error) {
+        chatError.textContent = "読み込みに失敗しました";
+        console.error(error);
+        return;
+      }
+
+      data.forEach(addMessage);
+      scrollBottom();
+    }
+
+    function startRealtime() {
+      if (channel) {
+        supabase.removeChannel(channel);
+      }
+
+      channel = supabase
+        .channel("room-" + currentRoom)
+        .on(
+          "postgres_changes",
+          {
+            event: "INSERT",
+            schema: "public",
+            table: "messages"
+          },
+          (payload) => {
+            const msg = payload.new;
+            if (msg.room_code === currentRoom && msg.reported === false) {
+              addMessage(msg);
+              scrollBottom();
+            }
+          }
+        )
+        .subscribe();
+    }
+
+    function addMessage(msg) {
+      const wrap = document.createElement("div");
+      wrap.className = "message";
+
+      const time = new Date(msg.created_at).toLocaleString("ja-JP");
+
+      wrap.innerHTML = `
+        <div class="meta">${escapeHtml(msg.name)} ・ ${escapeHtml(time)}</div>
+        <div class="text">${escapeHtml(msg.text)}</div>
+        <button class="danger" style="margin-top:8px;">通報</button>
+      `;
+
+      const reportBtn = wrap.querySelector("button");
+      reportBtn.addEventListener("click", async () => {
+        reportBtn.disabled = true;
+        reportBtn.textContent = "通報しました";
+
+        const { error } = await supabase
+          .from("messages")
+          .update({ reported: true })
+          .eq("id", msg.id);
+
+        if (error) {
+          console.error(error);
+        }
+
+        wrap.remove();
+      });
+
+      chatBox.appendChild(wrap);
+    }
+
+    function logout() {
+      currentName = "";
+      currentRoom = "";
+      chatBox.innerHTML = "";
+      msgInput.value = "";
+      chatError.textContent = "";
+
+      chatSection.classList.add("hidden");
+      loginSection.classList.remove("hidden");
+
+      if (channel) {
+        supabase.removeChannel(channel);
+        channel = null;
+      }
+    }
+
+    function escapeHtml(str) {
+      return String(str)
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll("\"", "&quot;")
+        .replaceAll("'", "&#039;");
+    }
+
+    function scrollBottom() {
+      chatBox.scrollTop = chatBox.scrollHeight;
+    }
+  </script>
+</body>
+</html>
